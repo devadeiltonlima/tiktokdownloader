@@ -407,6 +407,28 @@ def download_youtube_stream():
                 'quiet': True,
                 'no_warnings': True,
                 'no_color': True,
+                # Estratégias anti-bot:
+                'nocheckcertificate': True,
+                'ignoreerrors': False,
+                'logtostderr': False,
+                'quiet': True,
+                'no_warnings': True,
+                'default_search': 'auto',
+                'source_address': '0.0.0.0',
+                # Simular clientes oficiais para evitar "Sign in to confirm you’re not a bot"
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android', 'ios', 'web'],
+                        'player_skip': ['webpage', 'configs', 'js'],
+                        'include_ssl_logs': [True]
+                    }
+                },
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Sec-Fetch-Mode': 'navigate',
+                }
             }
             
             info = None
@@ -454,6 +476,15 @@ def download_youtube_stream():
                     'outtmpl': os.path.join(TEMP_DIR, base_filename + '.%(ext)s'),
                     'quiet': True,
                     'no_color': True,
+                    # Configurações anti-bot idênticas:
+                    'nocheckcertificate': True,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['android', 'ios', 'web'],
+                            'player_skip': ['webpage', 'configs', 'js'],
+                            'include_ssl_logs': [True]
+                        }
+                    },
                     'postprocessors': [{
                         'key': 'FFmpegExtractAudio',
                         'preferredcodec': 'mp3',
