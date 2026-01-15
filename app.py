@@ -6,7 +6,8 @@ import requests
 import json
 import time
 from flask import Flask, render_template, request, jsonify, send_file, Response
-from moviepy.editor import VideoFileClip
+from moviepy.editor import VideoFileClip, AudioFileClip
+import yt_dlp
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB limit
@@ -369,6 +370,121 @@ def cleanup():
         return jsonify({'success': True})
     except:
         return jsonify({'success': False})
+
+
+@app.route('/download_youtube_stream')
+def download_youtube_stream():
+    """
+    Endpoint SSE para download de áudio do YouTube com progresso
+    """
+    url = request.args.get('url', '').strip()
+    
+    def generate():
+        try:
+            import re
+            
+            # Etapa 1: Validação
+            yield f"data: {json.dumps({'step': 'validating', 'progress': 5, 'message': '🔍 Validando link do YouTube...'})}\n\n"
+            time.sleep(0.3)
+            
+            if not url:
+                yield f"data: {json.dumps({'step': 'error', 'message': 'URL não fornecida'})}\n\n"
+                return
+            
+            # Limpar a URL
+            clean_url = url.strip()
+            print(f"[DEBUG] URL recebida: {clean_url}")
+            
+            if 'youtube.com' not in clean_url and 'youtu.be' not in clean_url:
+                yield f"data: {json.dumps({'step': 'error', 'message': 'URL inválida do YouTube'})}\n\n"
+                return
+            
+            # Etapa 2: Buscando informações (yt-dlp)
+            yield f"data: {json.dumps({'step': 'fetching', 'progress': 15, 'message': '📡 Conectando ao YouTube...'})}\n\n"
+            
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'quiet': True,
+                'no_warnings': True,
+                'no_color': True,
+            }
+            
+            info = None
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(clean_url, download=False)
+            except Exception as e:
+                error_msg = str(e)
+                # Limpar códigos ANSI de cor
+                error_msg = re.sub(r'\x1b\[[0-9;]*m', '', error_msg)
+                print(f"[DEBUG] Erro yt-dlp: {error_msg}")
+                yield f"data: {json.dumps({'step': 'error', 'message': f'Erro ao buscar vídeo: {error_msg[:100]}'})}\n\n"
+                return
+
+            if not info:
+                yield f"data: {json.dumps({'step': 'error', 'message': 'Vídeo não encontrado'})}\n\n"
+                return
+            
+            title = info.get('title', 'YouTube Video')
+            author = info.get('uploader', 'Unknown')
+            duration = info.get('duration', 0)
+            
+            # Verificar duração (limite de 1 hora para evitar travar o servidor)
+            if duration and duration > 3600:
+                yield f"data: {json.dumps({'step': 'error', 'message': 'Vídeo muito longo (max 1 hora).'})}\n\n"
+                return
+
+            yield f"data: {json.dumps({'step': 'found', 'progress': 30, 'message': f'✅ Vídeo encontrado: {title[:50]}...', 'title': title, 'author': author})}\n\n"
+            
+            # Etapa 3: Preparando download
+            yield f"data: {json.dumps({'step': 'preparing', 'progress': 35, 'message': '📦 Preparando áudio...'})}\n\n"
+            
+            video_id = info.get('id', uuid.uuid4().hex)
+            base_filename = f"youtube_audio_{video_id}"
+            final_filename = f"{base_filename}.mp3"
+            
+            final_path = os.path.join(TEMP_DIR, final_filename)
+            
+            # Etapa 4: Download direto para MP3 usando yt-dlp com ffmpeg
+            yield f"data: {json.dumps({'step': 'downloading', 'progress': 40, 'message': '⬇️ Baixando e convertendo áudio...'})}\n\n"
+            
+            try:
+                ydl_opts_download = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': os.path.join(TEMP_DIR, base_filename + '.%(ext)s'),
+                    'quiet': True,
+                    'no_color': True,
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                }
+                
+                with yt_dlp.YoutubeDL(ydl_opts_download) as ydl:
+                    ydl.download([clean_url])
+                
+                yield f"data: {json.dumps({'step': 'converting', 'progress': 85, 'message': '🎵 Finalizando conversão...'})}\n\n"
+                
+            except Exception as ex:
+                error_msg = str(ex)
+                error_msg = re.sub(r'\x1b\[[0-9;]*m', '', error_msg)
+                yield f"data: {json.dumps({'step': 'error', 'message': f'Erro no download: {error_msg[:100]}'})}\n\n"
+                return
+            
+            if os.path.exists(final_path):
+                yield f"data: {json.dumps({'step': 'finalizing', 'progress': 95, 'message': '✨ Finalizando...'})}\n\n"
+                time.sleep(0.5)
+                
+                yield f"data: {json.dumps({'step': 'complete', 'progress': 100, 'message': '🎉 Download concluído!', 'video_filename': final_filename, 'title': title, 'author': author, 'is_audio': True})}\n\n"
+            else:
+                yield f"data: {json.dumps({'step': 'error', 'message': 'Erro ao salvar arquivo MP3'})}\n\n"
+                
+        except Exception as e:
+            traceback.print_exc()
+            yield f"data: {json.dumps({'step': 'error', 'message': f'Erro crítico: {str(e)}'})}\n\n"
+
+    return Response(generate(), mimetype='text/event-stream')
 
 
 if __name__ == '__main__':

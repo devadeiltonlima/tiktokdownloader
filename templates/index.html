@@ -20,6 +20,15 @@
                     <h2><i class="fas fa-download"></i> Cole o link do video no box abaixo:</h2>
                 </div>
                 <div class="card-body">
+                <div class="tabs">
+                        <button class="tab-btn active" data-platform="tiktok" onclick="switchPlatform('tiktok')">
+                            <i class="fab fa-tiktok"></i> TikTok
+                        </button>
+                        <button class="tab-btn" data-platform="youtube" onclick="switchPlatform('youtube')">
+                            <i class="fab fa-youtube"></i> YouTube (Áudio)
+                        </button>
+                    </div>
+
                     <div class="input-group">
                         <input type="text" id="urlInput" placeholder="Cole o link do vídeo do TikTok aqui...">
                         <button id="downloadBtn" class="btn-primary">
@@ -86,6 +95,7 @@
         let currentAudioFilename = null;
         let currentVideoTitle = null;
         let eventSource = null;
+        let currentPlatform = 'tiktok';
         
         // Elements
         const urlInput = document.getElementById('urlInput');
@@ -111,7 +121,31 @@
         });
         downloadVideoBtn.addEventListener('click', downloadVideo);
         extractAudioBtn.addEventListener('click', extractAudio);
+        downloadVideoBtn.addEventListener('click', downloadVideo);
+        extractAudioBtn.addEventListener('click', extractAudio);
         newDownloadBtn.addEventListener('click', resetForm);
+        
+        function switchPlatform(platform) {
+            currentPlatform = platform;
+            
+            // Atualizar tabs
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.platform === platform);
+            });
+            
+            // Atualizar UI
+            if (platform === 'youtube') {
+                urlInput.placeholder = 'Cole o link do vídeo do YouTube aqui...';
+                downloadBtn.innerHTML = '<i class="fas fa-search"></i> Processar YouTube';
+                downloadBtn.style.background = 'linear-gradient(135deg, #ff0000, #cc0000)';
+            } else {
+                urlInput.placeholder = 'Cole o link do vídeo do TikTok aqui...';
+                downloadBtn.innerHTML = '<i class="fas fa-search"></i> Buscar';
+                downloadBtn.style.background = ''; // Volta ao CSS original
+            }
+            
+            resetForm();
+        }
         
         function showStatus(message, type = 'info') {
             statusMessage.textContent = message;
@@ -157,9 +191,16 @@
                 return;
             }
             
-            if (!url.includes('tiktok.com')) {
-                showStatus('Por favor, insira um link válido do TikTok', 'error');
-                return;
+            if (currentPlatform === 'tiktok') {
+                if (!url.includes('tiktok.com')) {
+                    showStatus('Por favor, insira um link válido do TikTok', 'error');
+                    return;
+                }
+            } else {
+                if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+                    showStatus('Por favor, insira um link válido do YouTube', 'error');
+                    return;
+                }
             }
             
             // Cancelar conexão anterior se existir
@@ -175,7 +216,8 @@
             
             // Conectar ao SSE
             const encodedUrl = encodeURIComponent(url);
-            eventSource = new EventSource(`/download_stream?url=${encodedUrl}`);
+            const endpoint = currentPlatform === 'youtube' ? '/download_youtube_stream' : '/download_stream';
+            eventSource = new EventSource(`${endpoint}?url=${encodedUrl}`);
             
             eventSource.onmessage = function(event) {
                 const data = JSON.parse(event.data);
@@ -204,7 +246,18 @@
                     setTimeout(() => {
                         hideProgress();
                         actions.style.display = 'flex';
-                        showStatus('🎉 Vídeo pronto para download!', 'success');
+                        
+                        if (currentPlatform === 'youtube') {
+                            downloadVideoBtn.innerHTML = '<i class="fas fa-music"></i> Baixar MP3';
+                            downloadVideoBtn.className = 'btn-success'; // Manter verde ou mudar?
+                            extractAudioBtn.style.display = 'none'; // Já é áudio
+                        } else {
+                            downloadVideoBtn.innerHTML = '<i class="fas fa-video"></i> Baixar Vídeo (MP4)';
+                            extractAudioBtn.style.display = 'block';
+                            extractAudioBtn.innerHTML = '<i class="fas fa-music"></i> Extrair Áudio (MP3)';
+                        }
+                        
+                        showStatus(currentPlatform === 'youtube' ? '🎉 Áudio pronto!' : '🎉 Vídeo pronto para download!', 'success');
                         setButtonLoading(downloadBtn, false);
                     }, 1000);
                     
