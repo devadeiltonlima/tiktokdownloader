@@ -1,5 +1,6 @@
 Flask==2.3.3
 requests==2.31.0
 beautifulsoup4==4.12.2
-yt-dlp==2023.7.6
+yt-dlp>=2024.0.0
 moviepy==1.0.3
+gunicorn==21.2.0
