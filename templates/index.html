@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Downloader - Baixar Vídeos sem Marca d'Água</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fab fa-tiktok"></i> Tiktok Downloader</h1>
+            <p class="subtitle">Baixe vídeos do TikTok sem marca d'água e extraia o áudio totalmente grátis</p>
+        </header>
+
+        <main>
+            <div class="card">
+                <div class="card-header">
+                    <h2><i class="fas fa-download"></i> Cole o link do video no box abaixo:</h2>
+                </div>
+                <div class="card-body">
+                    <div class="input-group">
+                        <input type="text" id="urlInput" placeholder="Cole o link do vídeo do TikTok aqui...">
+                        <button id="downloadBtn" class="btn-primary">
+                            <i class="fas fa-search"></i> Buscar
+                        </button>
+                    </div>
+                    
+                    <div class="status-message" id="statusMessage" style="display: none;"></div>
+                    
+                    <div class="progress-section" id="progressSection" style="display: none;">
+                        <div class="progress-info">
+                            <span class="progress-step" id="progressStep"></span>
+                            <span class="progress-percent" id="progressPercent">0%</span>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+                        </div>
+                        <p class="progress-message" id="progressMessage"></p>
+                    </div>
+                    
+                    <div class="info-box" id="infoBox" style="display: none;">
+                        <div class="video-info">
+                            <h3 id="videoTitle"></h3>
+                            <p class="video-author" id="videoAuthor"></p>
+                        </div>
+                    </div>
+                    
+                    <div class="actions" id="actions" style="display: none;">
+                        <button id="downloadVideoBtn" class="btn-success">
+                            <i class="fas fa-video"></i> Baixar Vídeo (MP4)
+                        </button>
+                        <button id="extractAudioBtn" class="btn-warning">
+                            <i class="fas fa-music"></i> Extrair Áudio (MP3)
+                        </button>
+                        <button id="newDownloadBtn" class="btn-secondary">
+                            <i class="fas fa-redo"></i> Novo Download
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="instructions">
+                <h3><i class="fas fa-info-circle"></i> Como usar:</h3>
+                <ol>
+                    <li>Copie o link do vídeo do TikTok (app ou site)</li>
+                    <li>Cole o link no campo acima e clique em "Buscar"</li>
+                    <li>Clique em "Baixar Vídeo" para baixar o vídeo sem marca d'água</li>
+                    <li>Ou clique em "Extrair Áudio" para baixar apenas o áudio (MP3)</li>
+                </ol>
+                
+                <div class="disclaimer">
+                    <p><strong>Site Gratuito meu nobre!</strong> Pode apelar e baixar quantas vezes quiser, fique avonte kkkkkk</p>
+                </div>
+            </div>
+        </main>
+        
+        <footer>
+            <p>Baixa video e audio do tiktok! &copy; Feito por Adeilton Lima</p>
+        </footer>
+    </div>
+
+    <script>
+        let currentVideoFilename = null;
+        let currentAudioFilename = null;
+        let currentVideoTitle = null;
+        let eventSource = null;
+        
+        // Elements
+        const urlInput = document.getElementById('urlInput');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const statusMessage = document.getElementById('statusMessage');
+        const progressSection = document.getElementById('progressSection');
+        const progressBar = document.getElementById('progressBar');
+        const progressStep = document.getElementById('progressStep');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressMessage = document.getElementById('progressMessage');
+        const infoBox = document.getElementById('infoBox');
+        const videoTitle = document.getElementById('videoTitle');
+        const videoAuthor = document.getElementById('videoAuthor');
+        const actions = document.getElementById('actions');
+        const downloadVideoBtn = document.getElementById('downloadVideoBtn');
+        const extractAudioBtn = document.getElementById('extractAudioBtn');
+        const newDownloadBtn = document.getElementById('newDownloadBtn');
+        
+        // Event Listeners
+        downloadBtn.addEventListener('click', startDownload);
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') startDownload();
+        });
+        downloadVideoBtn.addEventListener('click', downloadVideo);
+        extractAudioBtn.addEventListener('click', extractAudio);
+        newDownloadBtn.addEventListener('click', resetForm);
+        
+        function showStatus(message, type = 'info') {
+            statusMessage.textContent = message;
+            statusMessage.className = `status-message status-${type}`;
+            statusMessage.style.display = 'block';
+        }
+        
+        function hideStatus() {
+            statusMessage.style.display = 'none';
+        }
+        
+        function updateProgress(percent, message, step = '') {
+            progressSection.style.display = 'block';
+            progressBar.style.width = `${percent}%`;
+            progressPercent.textContent = `${percent}%`;
+            progressMessage.textContent = message;
+            if (step) {
+                progressStep.textContent = step;
+            }
+        }
+        
+        function hideProgress() {
+            progressSection.style.display = 'none';
+            progressBar.style.width = '0%';
+        }
+        
+        function setButtonLoading(button, loading) {
+            if (loading) {
+                button.dataset.originalHtml = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
+                button.disabled = true;
+            } else {
+                button.innerHTML = button.dataset.originalHtml || button.innerHTML;
+                button.disabled = false;
+            }
+        }
+        
+        function startDownload() {
+            const url = urlInput.value.trim();
+            
+            if (!url) {
+                showStatus('Por favor, cole um link do TikTok', 'error');
+                return;
+            }
+            
+            if (!url.includes('tiktok.com')) {
+                showStatus('Por favor, insira um link válido do TikTok', 'error');
+                return;
+            }
+            
+            // Cancelar conexão anterior se existir
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            hideStatus();
+            setButtonLoading(downloadBtn, true);
+            actions.style.display = 'none';
+            infoBox.style.display = 'none';
+            updateProgress(0, 'Iniciando...', 'Conectando');
+            
+            // Conectar ao SSE
+            const encodedUrl = encodeURIComponent(url);
+            eventSource = new EventSource(`/download_stream?url=${encodedUrl}`);
+            
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                if (data.step === 'error') {
+                    eventSource.close();
+                    hideProgress();
+                    showStatus('Erro: ' + data.message, 'error');
+                    setButtonLoading(downloadBtn, false);
+                    return;
+                }
+                
+                if (data.step === 'complete') {
+                    eventSource.close();
+                    currentVideoFilename = data.video_filename;
+                    currentVideoTitle = data.title;
+                    
+                    updateProgress(100, data.message, 'Concluído');
+                    
+                    // Mostrar info do vídeo
+                    videoTitle.textContent = data.title || 'TikTok Video';
+                    videoAuthor.textContent = data.author ? `@${data.author}` : '';
+                    infoBox.style.display = 'block';
+                    
+                    // Mostrar botões de ação
+                    setTimeout(() => {
+                        hideProgress();
+                        actions.style.display = 'flex';
+                        showStatus('🎉 Vídeo pronto para download!', 'success');
+                        setButtonLoading(downloadBtn, false);
+                    }, 1000);
+                    
+                    return;
+                }
+                
+                // Atualizar progresso
+                const stepNames = {
+                    'validating': 'Validando',
+                    'fetching': 'Buscando',
+                    'found': 'Encontrado',
+                    'preparing': 'Preparando',
+                    'downloading': 'Baixando',
+                    'retrying': 'Tentando',
+                    'finalizing': 'Finalizando'
+                };
+                
+                updateProgress(
+                    data.progress || 0,
+                    data.message || 'Processando...',
+                    stepNames[data.step] || data.step
+                );
+                
+                // Atualizar título se disponível
+                if (data.title) {
+                    currentVideoTitle = data.title;
+                }
+            };
+            
+            eventSource.onerror = function() {
+                eventSource.close();
+                hideProgress();
+                showStatus('Erro de conexão. Tente novamente.', 'error');
+                setButtonLoading(downloadBtn, false);
+            };
+        }
+        
+        function downloadVideo() {
+            if (!currentVideoFilename) {
+                showStatus('Nenhum vídeo disponível para download', 'error');
+                return;
+            }
+            
+            showStatus('Iniciando download do vídeo...', 'info');
+            
+            const link = document.createElement('a');
+            const encodedTitle = encodeURIComponent(currentVideoTitle || 'TikTok Video');
+            link.href = `/get_file/${currentVideoFilename}?name=${encodedTitle}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showStatus('Download iniciado!', 'success');
+        }
+        
+        async function extractAudio() {
+            if (!currentVideoFilename) {
+                showStatus('Nenhum vídeo disponível para extrair áudio', 'error');
+                return;
+            }
+            
+            setButtonLoading(extractAudioBtn, true);
+            updateProgress(0, 'Extraindo áudio...', 'Processando');
+            progressSection.style.display = 'block';
+            
+            // Simular progresso durante extração
+            let progressInterval = setInterval(() => {
+                const current = parseInt(progressBar.style.width) || 0;
+                if (current < 90) {
+                    updateProgress(current + 10, 'Extraindo áudio...', 'Processando');
+                }
+            }, 500);
+            
+            try {
+                const formData = new FormData();
+                formData.append('video_filename', currentVideoFilename);
+                
+                const response = await fetch('/extract_audio', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                clearInterval(progressInterval);
+                
+                if (data.success) {
+                    currentAudioFilename = data.audio_filename;
+                    updateProgress(100, '✅ Áudio extraído com sucesso!', 'Concluído');
+                    
+                    setTimeout(() => {
+                        hideProgress();
+                        showStatus('Áudio extraído! Iniciando download...', 'success');
+                        
+                        const link = document.createElement('a');
+                        const encodedTitle = encodeURIComponent(currentVideoTitle || 'TikTok Audio');
+                        link.href = `/get_file/${data.audio_filename}?name=${encodedTitle}`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }, 500);
+                } else {
+                    hideProgress();
+                    showStatus('Erro: ' + (data.error || 'Erro ao extrair áudio'), 'error');
+                }
+            } catch (error) {
+                clearInterval(progressInterval);
+                hideProgress();
+                showStatus('Erro de conexão: ' + error.message, 'error');
+            } finally {
+                setButtonLoading(extractAudioBtn, false);
+            }
+        }
+        
+        function resetForm() {
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            if (currentVideoFilename || currentAudioFilename) {
+                const filenames = [];
+                if (currentVideoFilename) filenames.push(currentVideoFilename);
+                if (currentAudioFilename) filenames.push(currentAudioFilename);
+                
+                fetch('/cleanup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filenames })
+                }).catch(() => {});
+            }
+            
+            urlInput.value = '';
+            currentVideoFilename = null;
+            currentAudioFilename = null;
+            currentVideoTitle = null;
+            infoBox.style.display = 'none';
+            actions.style.display = 'none';
+            hideStatus();
+            hideProgress();
+            urlInput.focus();
+        }
+        
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) eventSource.close();
+            
+            if (currentVideoFilename || currentAudioFilename) {
+                const filenames = [];
+                if (currentVideoFilename) filenames.push(currentVideoFilename);
+                if (currentAudioFilename) filenames.push(currentAudioFilename);
+                navigator.sendBeacon('/cleanup', JSON.stringify({ filenames }));
+            }
+        });
+    </script>
+</body>
+</html>
